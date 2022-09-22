@@ -2,7 +2,7 @@ import uuid
 from django.db import models
 
 FILE_PROVIDERS = [
-    (0, "local"),
+    ("local", "local"),
     # Not Implemented
     # (1, 's3'),
     # (2, 'gcs'),
@@ -10,25 +10,24 @@ FILE_PROVIDERS = [
 ]
 
 ASSET_STATES = [
-    (1, "queued"),
-    (2, "in_progress"),
-    (3, "complete"),
-    (4, "failed"),
+    ("queued", "queued"),
+    ("in_progress", "in_progress"),
+    ("complete", "complete"),
+    ("failed", "failed"),
 ]
 
 
 class Asset(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    sha2 = models.CharField(max_length=255, blank=True, null=True)
 
-    path = models.CharField(max_length=32, blank=True, null=True)
-    provider = models.PositiveSmallIntegerField(choices=FILE_PROVIDERS, default=0)
+    path = models.TextField(blank=False, null=False)
+    provider = models.CharField(max_length=16, choices=FILE_PROVIDERS, default=0)
 
-    start_webhook_endpoint = models.TextField(blank=True, null=True)
-    success_webhook_endpoint = models.TextField(blank=True, null=True)
-    failure_webhook_endpoint = models.TextField(blank=True, null=True)
+    start_webhook_endpoint = models.URLField(blank=True, null=True)
+    success_webhook_endpoint = models.URLField(blank=True, null=True)
+    failure_webhook_endpoint = models.URLField(blank=True, null=True)
 
-    state = models.PositiveSmallIntegerField(choices=ASSET_STATES, default="queued")
+    state = models.CharField(max_length=16, choices=ASSET_STATES, default="queued")
 
     # FIXME(jake): Someday this could probably morph into a JSONField
     errors = models.TextField(blank=True, null=True)

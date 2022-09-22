@@ -42,17 +42,20 @@ SECRET_KEY = ENV("SECURITY_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = ENV("DEBUG")
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*", "localhost"]
 
 # Application definition
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    # "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Custom Apps Below
+    "validatr.api",
+    "rest_framework",
 ]
 
 MIDDLEWARE = [
@@ -65,7 +68,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "validatr.urls"
+ROOT_URLCONF = "validatr.api.urls"
 
 TEMPLATES = [
     {
@@ -83,7 +86,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "validatr.wsgi.application"
+WSGI_APPLICATION = "validatr.api.wsgi.application"
 
 
 # Database
@@ -137,3 +140,5 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+APPEND_SLASH = False
