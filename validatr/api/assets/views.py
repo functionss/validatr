@@ -19,7 +19,7 @@ from validatr.api.assets.serializers import (
 from validatr.pipeline.tasks import run_pipeline
 
 
-class ImageAssetViewset(viewsets.ViewSet, viewsets.GenericViewSet):
+class AssetViewset(viewsets.ViewSet, viewsets.GenericViewSet):
 
     queryset = Asset.objects.all()
     serializer_class = GetAssetResponseSerializer
@@ -27,15 +27,33 @@ class ImageAssetViewset(viewsets.ViewSet, viewsets.GenericViewSet):
     def list(self, request):
         """
         List of image assets.
+
+        GET /api/assets
         """
         query = self.get_queryset()
         serializer = GetAssetResponseSerializer(query, many=True)
 
         return Response(serializer.data)
 
-    def create(self, request):
+    def retrieve(self, request, pk=None):
+        """
+        fetch a specific asset by ID
+
+        GET /api/assets/{asset_id}
+        """
+        query = self.queryset.filter(id=pk)
+
+        asset = get_object_or_404(query)
+        serializer = GetAssetWithErrorsResponseSerializer(asset)
+
+        return Response(serializer.data)
+
+    @action(methods=["post"], url_path="image", detail=False)
+    def create_asset(self, request):
         """
         Create a new image asset
+
+        POST /api/assets/image/
         """
         serializer = CreateAssetRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -57,14 +75,3 @@ class ImageAssetViewset(viewsets.ViewSet, viewsets.GenericViewSet):
 
         run_pipeline(asset.id)
         return Response(resp, status=status.HTTP_202_ACCEPTED)
-
-    def retrieve(self, request, pk=None):
-        """
-        fetch a specific asset by ID
-        """
-        query = self.queryset.filter(id=pk)
-
-        asset = get_object_or_404(query)
-        serializer = GetAssetWithErrorsResponseSerializer(asset)
-
-        return Response(serializer.data)
