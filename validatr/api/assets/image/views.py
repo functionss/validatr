@@ -16,6 +16,8 @@ from validatr.api.assets.image.serializers import (
     GetAssetWithErrorsResponseSerializer,
 )
 
+from validatr.pipeline.tasks import run_pipeline
+
 
 class ImageAssetViewset(viewsets.ViewSet, viewsets.GenericViewSet):
 
@@ -52,6 +54,8 @@ class ImageAssetViewset(viewsets.ViewSet, viewsets.GenericViewSet):
         )
 
         resp = GetAssetResponseSerializer(asset).data
+
+        run_pipeline(asset.id)
         return Response(resp, status=status.HTTP_202_ACCEPTED)
 
     def retrieve(self, request, pk=None):

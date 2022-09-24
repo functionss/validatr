@@ -1,3 +1,4 @@
+import enum
 import uuid
 from django.db import models
 
@@ -9,11 +10,17 @@ FILE_PROVIDERS = [
     # (3, 'remote'),
 ]
 
+
+QUEUED = "queued"
+IN_PROGRESS = "in_progress"
+COMPLETE = "complete"
+FAILED = "failed"
+
 ASSET_STATES = [
-    ("queued", "queued"),
-    ("in_progress", "in_progress"),
-    ("complete", "complete"),
-    ("failed", "failed"),
+    (QUEUED, QUEUED),
+    (IN_PROGRESS, IN_PROGRESS),
+    (COMPLETE, COMPLETE),
+    (FAILED, FAILED),
 ]
 
 
@@ -30,7 +37,7 @@ class Asset(models.Model):
     state = models.CharField(max_length=16, choices=ASSET_STATES, default="queued")
 
     # FIXME(jake): Someday this could probably morph into a JSONField
-    errors = models.TextField(blank=True, null=True)
+    errors = models.JSONField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
