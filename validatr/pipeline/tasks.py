@@ -7,7 +7,7 @@ from PIL import Image
 from validatr.utils.webhooks import webhook_post
 from validatr.api.models import Asset, IN_PROGRESS, COMPLETE, FAILED
 
-from validatr.api.assets.image.serializers import (
+from validatr.api.assets.serializers import (
     CreateAssetRequestSerializer,
     GetAssetResponseSerializer,
     GetAssetWithErrorsResponseSerializer,

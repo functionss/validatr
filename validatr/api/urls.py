@@ -25,15 +25,11 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 
-from validatr.api.assets.image.views import ImageAssetViewset
+from validatr.api.assets.views import ImageAssetViewset
 
 # Create a router and register our viewsets with it.
 router = DefaultRouter()
-router.register(
-    r"assets/image",
-    ImageAssetViewset,
-    basename="image",
-)
+router.register(r"assets", ImageAssetViewset, basename="image")
 
 # The API URLs are now determined automatically by the router.
 urlpatterns = [

@@ -10,7 +10,7 @@ from rest_framework.decorators import action
 from rest_framework import filters
 
 from validatr.api.models import Asset
-from validatr.api.assets.image.serializers import (
+from validatr.api.assets.serializers import (
     CreateAssetRequestSerializer,
     GetAssetResponseSerializer,
     GetAssetWithErrorsResponseSerializer,
