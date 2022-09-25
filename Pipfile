@@ -5,10 +5,13 @@ name = "pypi"
 
 [packages]
 django = "==4.1.1"
+django-environ = "*"
 celery = {extras = ["redis"], version = "*"}
 requests = "*"
 djangorestframework = "*"
 pillow = "*"
+validatr = {path = ".", editable = true}
+psycopg2-binary = "*"
 
 [dev-packages]
 ipdb = "*"
@@ -16,4 +19,4 @@ black = "*"
 flake8 = "*"
 
 [requires]
-python_version = "3.9"
+python_version = "3"
