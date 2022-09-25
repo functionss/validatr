@@ -30,25 +30,32 @@ class ValidatorsTestCase(TestCase):
         self.png_asset = _asset_payload("./assets/png-screenshot.png")
         self.unreachable_asset = _asset_payload("./path/to/nowhere.jpg")
 
-    def test_validate_asset_path(self):
+    def test_valid_jpeg(self):
         jpeg_asset = requests.post(CREATE_ASSET_URL, json=self.jpeg_asset)
-        unreachable_asset = requests.post(CREATE_ASSET_URL, json=self.unreachable_asset)
 
         jpeg_asset_id = jpeg_asset.json()["id"]
-        unreachable_asset_id = unreachable_asset.json()["id"]
 
         self.assertEqual(jpeg_asset.status_code, 202)
-        self.assertEqual(unreachable_asset.status_code, 202)
         self.assertEqual("queued", jpeg_asset.json()["state"])
-        self.assertEqual("queued", unreachable_asset.json()["state"])
 
-        # Images have been queued, now we need to wait a few seconds for the processing to complete.
+        # Image has been queued, now we need to wait a few seconds for the processing to complete.
         time.sleep(3)
 
         jpeg_final_state = requests.get(
             FETCH_ASSET_URL.format(id=jpeg_asset_id)
         ).json()["state"]
         self.assertEqual("complete", jpeg_final_state)
+
+    def test_validate_asset_path(self):
+        unreachable_asset = requests.post(CREATE_ASSET_URL, json=self.unreachable_asset)
+
+        unreachable_asset_id = unreachable_asset.json()["id"]
+
+        self.assertEqual(unreachable_asset.status_code, 202)
+        self.assertEqual("queued", unreachable_asset.json()["state"])
+
+        # Image has been queued, now we need to wait a few seconds for the processing to complete.
+        time.sleep(3)
 
         unreachable_final_resp = requests.get(
             FETCH_ASSET_URL.format(id=unreachable_asset_id)
