@@ -44,7 +44,11 @@ class AssetViewset(viewsets.ViewSet, viewsets.GenericViewSet):
         query = self.queryset.filter(id=pk)
 
         asset = get_object_or_404(query)
-        serializer = GetAssetWithErrorsResponseSerializer(asset)
+
+        if asset.errors:
+            serializer = GetAssetWithErrorsResponseSerializer(asset)
+        else:
+            serializer = GetAssetResponseSerializer(asset)
 
         return Response(serializer.data)
 
