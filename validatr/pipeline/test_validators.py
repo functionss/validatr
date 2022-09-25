@@ -12,38 +12,22 @@ from validatr.pipeline.tasks import (
 )
 
 
+def _create_asset(path):
+    return Asset.objects.create(
+        path=path,
+        start_webhook_endpoint="http://fake-start-endpoint.com/",
+        success_webhook_endpoint="http://fake-success-endpoint.com/",
+        failure_webhook_endpoint="http://fake-failure-endpoint.com/",
+    )
+
+
 class ValidatorsTestCase(TestCase):
     def setUp(self):
-        self.text_asset = Asset.objects.create(
-            path="./assets/not-an-image.txt",
-            start_webhook_endpoint="http://fake-start-endpoint.com/",
-            success_webhook_endpoint="http://fake-success-endpoint.com/",
-            failure_webhook_endpoint="http://fake-failure-endpoint.com/",
-        )
-        self.jpeg_asset = Asset.objects.create(
-            path="./assets/200-ok.jpg",
-            start_webhook_endpoint="http://localhost:8000/api/assets/",
-            success_webhook_endpoint="http://localhost:8000/api/assets/",
-            failure_webhook_endpoint="http://localhost:8000/api/assets/",
-        )
-        self.oversized_asset = Asset.objects.create(
-            path="./assets/yuge.jpg",
-            start_webhook_endpoint="http://localhost:8000/api/assets/",
-            success_webhook_endpoint="http://localhost:8000/api/assets/",
-            failure_webhook_endpoint="http://localhost:8000/api/assets/",
-        )
-        self.png_asset = Asset.objects.create(
-            path="./assets/png-screenshot.png",
-            start_webhook_endpoint="http://fake-start-endpoint.com/",
-            success_webhook_endpoint="http://fake-success-endpoint.com/",
-            failure_webhook_endpoint="http://fake-failure-endpoint.com/",
-        )
-        self.unreachable_asset = Asset.objects.create(
-            path="./path/to/nowhere.jpg",
-            start_webhook_endpoint="http://fake-start-endpoint.com/",
-            success_webhook_endpoint="http://fake-success-endpoint.com/",
-            failure_webhook_endpoint="http://fake-failure-endpoint.com/",
-        )
+        self.text_asset = _create_asset("./assets/not-an-image.txt")
+        self.jpeg_asset = _create_asset("./assets/200-ok.jpg")
+        self.oversized_asset = _create_asset("./assets/yuge.jpg")
+        self.png_asset = _create_asset("./assets/png-screenshot.png")
+        self.unreachable_asset = _create_asset("./path/to/nowhere.jpg")
 
     @patch("validatr.pipeline.tasks.webhook_post", autospec=True)
     def test_validate_asset_path(self, mock_webhook_post):
