@@ -66,3 +66,62 @@ class ValidatorsTestCase(TestCase):
             ["Asset path is not reachable."],
             unreachable_final_resp["errors"]["onStart"],
         )
+
+    def test_validate_asset_is_image(self):
+        text_asset = requests.post(CREATE_ASSET_URL, json=self.text_asset)
+
+        text_asset_id = text_asset.json()["id"]
+
+        self.assertEqual(text_asset.status_code, 202)
+        self.assertEqual("queued", text_asset.json()["state"])
+
+        # Image has been queued, now we need to wait a few seconds for the processing to complete.
+        time.sleep(3)
+
+        text_final_resp = requests.get(FETCH_ASSET_URL.format(id=text_asset_id)).json()
+
+        self.assertEqual("failed", text_final_resp["state"])
+        self.assertEqual(
+            ["Asset is not an image."],
+            text_final_resp["errors"]["asset"],
+        )
+
+    def test_validate_asset_is_jpeg(self):
+        png_asset = requests.post(CREATE_ASSET_URL, json=self.png_asset)
+
+        png_asset_id = png_asset.json()["id"]
+
+        self.assertEqual(png_asset.status_code, 202)
+        self.assertEqual("queued", png_asset.json()["state"])
+
+        # Image has been queued, now we need to wait a few seconds for the processing to complete.
+        time.sleep(3)
+
+        png_final_resp = requests.get(FETCH_ASSET_URL.format(id=png_asset_id)).json()
+
+        self.assertEqual("failed", png_final_resp["state"])
+        self.assertEqual(
+            ["Assets must be a JPEG, the provided image is a PNG"],
+            png_final_resp["errors"]["asset"],
+        )
+
+    def test_validate_asset_dimensions(self):
+        oversized_asset = requests.post(CREATE_ASSET_URL, json=self.oversized_asset)
+
+        oversized_asset_id = oversized_asset.json()["id"]
+
+        self.assertEqual(oversized_asset.status_code, 202)
+        self.assertEqual("queued", oversized_asset.json()["state"])
+
+        # Image has been queued, now we need to wait a few seconds for the processing to complete.
+        time.sleep(3)
+
+        oversized_final_resp = requests.get(
+            FETCH_ASSET_URL.format(id=oversized_asset_id)
+        ).json()
+
+        self.assertEqual("failed", oversized_final_resp["state"])
+        self.assertIn(
+            "Image dimensions must have a width and height smaller than 1000px.",
+            oversized_final_resp["errors"]["asset"][0],
+        )
