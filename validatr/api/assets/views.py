@@ -31,7 +31,7 @@ class AssetViewset(viewsets.ViewSet, viewsets.GenericViewSet):
         GET /api/assets
         """
         query = self.get_queryset()
-        serializer = GetAssetResponseSerializer(query, many=True)
+        serializer = GetAssetWithErrorsResponseSerializer(query, many=True)
 
         return Response(serializer.data)
 
