@@ -20,27 +20,30 @@ ON_SUCCESS = "onSuccess"
 ON_FAILURE = "onFailure"
 
 
-class FailedValidationException(Exception):
+def report_failure(task, asset_id, message, error_key="asset"):
     """
-    FailedValidation is raised when a validation step fails.
-
-    Raising this exception will halt further pipeline steps from running.
+    When called, this function will halt the pipeline from further steps, and
+    report the error to the failure webhook endpoint.
     """
 
-    def __init__(self, asset_id, message, error_key="asset"):
-        # Set the failed state, along with error messages on the asset record.
-        asset = Asset.objects.get(id=asset_id)
-        asset.state = FAILED
-        asset.errors = {f"{error_key}": [message]}
-        asset.save()
+    # Halt the rest of the pipeline from execution.
+    task.request.chain = None
 
-        # Prepare and send the webhook payload
-        payload = GetAssetWithErrorsResponseSerializer(asset).data
-        webhook_post(asset.failure_webhook_endpoint, payload)
-        # Print to stdout
-        print(
-            f"Asset Validation Failed: id:{asset.id}  notify:{asset.start_webhook_endpoint} payload:{payload}"
-        )
+    # Set the failed state, along with error messages on the asset record.
+    asset = Asset.objects.get(id=asset_id)
+    asset.state = FAILED
+    asset.errors = {f"{error_key}": [message]}
+    asset.save()
+
+    # Prepare and send the webhook payload
+    payload = GetAssetWithErrorsResponseSerializer(asset).data
+    webhook_post(asset.failure_webhook_endpoint, payload)
+    # Print to stdout
+    print(
+        f"Asset Validation Failed: id:{asset.id}  notify:{asset.start_webhook_endpoint} payload:{payload}"
+    )
+
+    return False
 
 
 def run_pipeline(asset_id):
@@ -66,7 +69,6 @@ def run_pipeline(asset_id):
     return chain(pipeline).apply_async()
 
 
-@shared_task()
 def trigger_hook(asset_id, hook_name):
     """
     Update the asset record with the new state, then send the webhook notification.
@@ -109,21 +111,21 @@ def end_pipeline(asset_id):
     return asset_id
 
 
-@shared_task
-def validate_asset_path(asset_id):
+@shared_task(bind=True)
+def validate_asset_path(self, asset_id):
     """Ensure the file is reachable by the server."""
     asset = Asset.objects.get(id=asset_id)
 
     if not os.path.exists(asset.path):
-        raise FailedValidationException(
-            asset.id, "Asset path is not reachable.", error_key=ON_START
+        return report_failure(
+            self, asset.id, "Asset path is not reachable.", error_key=ON_START
         )
 
     return asset.id
 
 
-@shared_task
-def validate_asset_is_image(asset_id):
+@shared_task(bind=True)
+def validate_asset_is_image(self, asset_id):
     """Ensure the file is an image."""
     asset = Asset.objects.get(id=asset_id)
 
@@ -133,11 +135,11 @@ def validate_asset_is_image(asset_id):
             img.verify()
             return asset.id
         except Exception as e:
-            raise FailedValidationException(asset.id, "Asset is not an image.")
+            return report_failure(self, asset.id, "Asset is not an image.")
 
 
-@shared_task
-def validate_asset_is_jpeg(asset_id):
+@shared_task(bind=True)
+def validate_asset_is_jpeg(self, asset_id):
     """Ensure the file is a JPEG."""
     asset = Asset.objects.get(id=asset_id)
 
@@ -146,22 +148,28 @@ def validate_asset_is_jpeg(asset_id):
     # explicitly check the file signature via Pillow.
     with Image.open(asset.path) as img:
         if img.format != "JPEG":
-            raise FailedValidationException(
-                asset.id, f"Assets must be a JPEG, the provided image is a {img.format}"
+            return report_failure(
+                self,
+                asset.id,
+                f"Assets must be a JPEG, the provided image is a {img.format}",
             )
 
     return asset.id
 
 
-@shared_task
-def validate_asset_dimensions(asset_id):
+@shared_task(bind=True)
+def validate_asset_dimensions(self, asset_id):
     asset = Asset.objects.get(id=asset_id)
 
     MAX_DIMENSION = 1000
 
+    # from celery.contrib import rdb
+
+    # rdb.set_trace()
     with Image.open(asset.path) as img:
         if img.width > MAX_DIMENSION or img.height > MAX_DIMENSION:
-            raise FailedValidationException(
+            return report_failure(
+                self,
                 asset.id,
                 f"Image dimensions must have a width and height smaller than 1000px. The provided image has dimensions of {img.width}x{img.height}px.",
             )
