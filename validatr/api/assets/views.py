@@ -1,3 +1,4 @@
+import json
 import datetime
 from django.shortcuts import get_object_or_404, get_list_or_404
 from django.db.models import Q
@@ -79,3 +80,14 @@ class AssetViewset(viewsets.ViewSet, viewsets.GenericViewSet):
 
         run_pipeline(asset.id)
         return Response(resp, status=status.HTTP_202_ACCEPTED)
+
+
+class EchoViewset(viewsets.ViewSet, viewsets.GenericViewSet):
+    @action(detail=False, url_path="post", methods=["post"])
+    def echo(self, request):
+        """
+        Echo back the request body, this is used for testing webhooks.
+
+        POST /echo/post
+        """
+        return Response(request.data)
