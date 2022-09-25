@@ -2,6 +2,7 @@ import os
 import enum
 
 from celery import chain, shared_task
+
 from PIL import Image
 
 from validatr.utils.webhooks import webhook_post
@@ -19,9 +20,41 @@ ON_SUCCESS = "onSuccess"
 ON_FAILURE = "onFailure"
 
 
+class FailedValidationException(Exception):
+    """
+    FailedValidation is raised when a validation step fails.
+
+    Raising this exception will halt further pipeline steps from running.
+    """
+
+    def __init__(self, asset_id, message, error_key="asset"):
+        # Set the failed state, along with error messages on the asset record.
+        asset = Asset.objects.get(id=asset_id)
+        asset.state = FAILED
+        asset.errors = {f"{error_key}": [message]}
+        asset.save()
+
+        # Prepare and send the webhook payload
+        payload = GetAssetWithErrorsResponseSerializer(asset).data
+        webhook_post(asset.failure_webhook_endpoint, payload)
+        # Print to stdout
+        print(
+            f"Asset Validation Failed: id:{asset.id}  notify:{asset.start_webhook_endpoint} payload:{payload}"
+        )
+
+
 def run_pipeline(asset_id):
-    # the result of the first add job will be
-    # the first argument of the second add job
+    """
+    Kicks off the asynchronous validation pipeline for a given asset.
+    """
+
+    # The pipeline is an ordered chain of validation asynchronous tasks.
+    #
+    # If a task succeeds in validation, then the `asset_id` is returned and
+    # passed to the next step in the pipeline.
+    #
+    # If a task fails in validation, then a `FailedValidationException` is
+    # raised, which will halt the pipeline, and report the error.
     pipeline = [
         start_pipeline.s(asset_id),
         validate_asset_path.s(),
@@ -33,53 +66,35 @@ def run_pipeline(asset_id):
     return chain(pipeline).apply_async()
 
 
-@shared_task
-def trigger_hook(asset_id, hook_name, error_key=None, error=None):
+@shared_task()
+def trigger_hook(asset_id, hook_name):
     """
     Update the asset record with the new state, then send the webhook notification.
     """
     asset = Asset.objects.get(id=asset_id)
+
     if hook_name == ON_START:
         asset.state = IN_PROGRESS
         asset.save()
 
-        json_body = GetAssetResponseSerializer(asset).data
+        payload = GetAssetResponseSerializer(asset).data
 
-        webhook_post(asset.start_webhook_endpoint, json_body)
+        print(
+            f"Asset Validation Started: id:{asset.id} notify:{asset.start_webhook_endpoint} payload:{payload}"
+        )
+
+        webhook_post(asset.start_webhook_endpoint, payload)
     elif hook_name == ON_SUCCESS:
         asset.state = COMPLETE
         asset.save()
 
-        json_body = GetAssetResponseSerializer(asset).data
-        webhook_post(asset.success_webhook_endpoint, json_body)
+        payload = GetAssetResponseSerializer(asset).data
 
+        print(
+            f"Asset Validation Complete: id:{asset.id} notify:{asset.success_webhook_endpoint} payload:{payload}"
+        )
 
-@shared_task
-def report_failure(asset_id, error_key, error):
-    """
-    Update the asset record, then send the onFailure webhook update
-    """
-    asset = Asset.objects.get(id=asset_id)
-    asset.state = FAILED
-
-    errors = asset.errors
-
-    if asset.errors is None:
-        asset.errors = {f"{error_key}": [error]}
-    else:
-        if error_key in errors:
-            errors[error_key] = errors[error_key].push(error)
-            asset.errors = errors
-
-    asset.save()
-
-    json_body = GetAssetWithErrorsResponseSerializer(asset).data
-
-    webhook_post(asset.failure_webhook_endpoint, json_body)
-
-    # Throwing an exception will print the error to stdout, as well as cancel the
-    # rest of the pipeline.
-    raise Exception(f"Asset Validation Failed: id:{asset_id}, error:{error}")
+        webhook_post(asset.success_webhook_endpoint, payload)
 
 
 @shared_task
@@ -99,12 +114,12 @@ def validate_asset_path(asset_id):
     """Ensure the file is reachable by the server."""
     asset = Asset.objects.get(id=asset_id)
 
-    # check that asset.path is reachable
-    if os.path.exists(asset.path):
-        return asset.id
+    if not os.path.exists(asset.path):
+        raise FailedValidationException(
+            asset.id, "Asset path is not reachable.", error_key=ON_START
+        )
 
-    report_failure(asset.id, "asset", "Asset path is not reachable")
-    return False
+    return asset.id
 
 
 @shared_task
@@ -118,8 +133,7 @@ def validate_asset_is_image(asset_id):
             img.verify()
             return asset.id
         except Exception as e:
-            report_failure(asset.id, "asset", "Asset is not an image.")
-            return False
+            raise FailedValidationException(asset.id, "Asset is not an image.")
 
 
 @shared_task
@@ -132,12 +146,9 @@ def validate_asset_is_jpeg(asset_id):
     # explicitly check the file signature via Pillow.
     with Image.open(asset.path) as img:
         if img.format != "JPEG":
-            report_failure(
-                asset.id,
-                "asset",
-                f"Assets must be a JPEG, the provided image is a {img.format}",
+            raise FailedValidationException(
+                asset.id, f"Assets must be a JPEG, the provided image is a {img.format}"
             )
-            return False
 
     return asset.id
 
@@ -150,10 +161,8 @@ def validate_asset_dimensions(asset_id):
 
     with Image.open(asset.path) as img:
         if img.width > MAX_DIMENSION or img.height > MAX_DIMENSION:
-            report_failure(
+            raise FailedValidationException(
                 asset.id,
-                "asset",
                 f"Image dimensions must have a width and height smaller than 1000px. The provided image has dimensions of {img.width}x{img.height}px.",
             )
-            return False
     return asset.id
