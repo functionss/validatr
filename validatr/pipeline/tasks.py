@@ -3,7 +3,8 @@ import enum
 
 from celery import chain, shared_task
 
-from PIL import Image
+
+from PIL import Image, UnidentifiedImageError
 
 from validatr.utils.webhooks import webhook_post
 from validatr.api.models import Asset, IN_PROGRESS, COMPLETE, FAILED
@@ -39,11 +40,10 @@ def report_failure(task, asset_id, message, error_key="asset"):
     payload = GetAssetWithErrorsResponseSerializer(asset).data
     webhook_post(asset.failure_webhook_endpoint, payload)
     # Print to stdout
-    print(
-        f"Asset Validation Failed: id:{asset.id}  notify:{asset.start_webhook_endpoint} payload:{payload}"
-    )
+    error_msg = f"Asset Validation Failed: id:{asset.id}  notify:{asset.start_webhook_endpoint} payload:{payload}"
+    print(error_msg)
 
-    return False
+    return error_msg
 
 
 def run_pipeline(asset_id):
@@ -130,12 +130,12 @@ def validate_asset_is_image(self, asset_id):
     asset = Asset.objects.get(id=asset_id)
 
     # Check that the asset is indeed an image.
-    with Image.open(asset.path) as img:
-        try:
+    try:
+        with Image.open(asset.path) as img:
             img.verify()
             return asset.id
-        except Exception as e:
-            return report_failure(self, asset.id, "Asset is not an image.")
+    except UnidentifiedImageError:
+        return report_failure(self, asset.id, "Asset is not an image.")
 
 
 @shared_task(bind=True)
