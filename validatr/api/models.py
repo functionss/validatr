@@ -1,4 +1,3 @@
-import enum
 import uuid
 from django.db import models
 
@@ -36,7 +35,6 @@ class Asset(models.Model):
 
     state = models.CharField(max_length=16, choices=ASSET_STATES, default="queued")
 
-    # FIXME(jake): Someday this could probably morph into a JSONField
     errors = models.JSONField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)

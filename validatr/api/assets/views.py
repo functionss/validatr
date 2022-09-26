@@ -1,14 +1,8 @@
-import json
-import datetime
-from django.shortcuts import get_object_or_404, get_list_or_404
-from django.db.models import Q
+from django.shortcuts import get_object_or_404
 
 from rest_framework import status, viewsets
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import action
-
-from rest_framework import filters
 
 from validatr.api.models import Asset
 from validatr.api.assets.serializers import (

@@ -1,7 +1,6 @@
-from django.urls import path, include
 from validatr.api.models import Asset, FILE_PROVIDERS
 
-from rest_framework import routers, serializers, viewsets
+from rest_framework import serializers
 
 
 class NotificationURLSerializer(serializers.Serializer):

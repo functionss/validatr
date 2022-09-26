@@ -1,18 +1,13 @@
 import os
-import enum
-from re import I
 
-from celery import chain, shared_task
 import validators
 
-
+from celery import chain, shared_task
 from PIL import Image, UnidentifiedImageError
 
 from validatr.utils.webhooks import webhook_post
 from validatr.api.models import Asset, IN_PROGRESS, COMPLETE, FAILED
-
 from validatr.api.assets.serializers import (
-    CreateAssetRequestSerializer,
     GetAssetResponseSerializer,
     GetAssetWithErrorsResponseSerializer,
 )
@@ -59,8 +54,9 @@ def run_pipeline(asset_id):
     # If a task succeeds in validation, then the `asset_id` is returned and
     # passed to the next step in the pipeline.
     #
-    # If a task fails in validation, then a `FailedValidationException` is
-    # raised, which will halt the pipeline, and report the error.
+    # If a task fails in validation, the error is recorded to the db record.
+    # When all of the pipeline tasks have finished, the `end_pipeline` task will
+    # notify the onFailure webhook endpoint.
     pipeline = [
         start_pipeline.s(asset_id),
         validate_webhook_urls.s(),

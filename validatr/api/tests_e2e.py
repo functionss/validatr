@@ -1,10 +1,9 @@
-from pathlib import Path
-
 import time
 
-from django.test import TestCase
-
 import requests
+
+from pathlib import Path
+from django.test import TestCase
 
 
 def is_docker():
