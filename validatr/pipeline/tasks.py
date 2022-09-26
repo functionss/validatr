@@ -1,7 +1,9 @@
 import os
 import enum
+from re import I
 
 from celery import chain, shared_task
+import validators
 
 
 from PIL import Image, UnidentifiedImageError
@@ -21,29 +23,30 @@ ON_SUCCESS = "onSuccess"
 ON_FAILURE = "onFailure"
 
 
-def report_failure(task, asset_id, message, error_key="asset"):
+@shared_task
+def record_errors(asset_id, errors, caller=None):
     """
-    When called, this function will halt the pipeline from further steps, and
-    report the error to the failure webhook endpoint.
+    When called, will record the errors into the asset record.
     """
 
-    # Halt the rest of the pipeline from execution.
-    task.request.chain = None
+    print(f"record_errors: asset_id: {asset_id} errors: {errors} caller: {caller}")
 
     # Set the failed state, along with error messages on the asset record.
     asset = Asset.objects.get(id=asset_id)
-    asset.state = FAILED
-    asset.errors = {f"{error_key}": [message]}
+
+    # If no errors are recorded yet, then we can just set the errors.
+    if asset.errors is None:
+        asset.errors = errors
+    else:
+        prev_errors = asset.errors.copy()
+        # If errors are already recorded, then we need to merge the new errors
+        for key, value in errors.items():
+            if key not in prev_errors:
+                prev_errors[key] = value
+            else:
+                prev_errors[key].extend(value)
+
     asset.save()
-
-    # Prepare and send the webhook payload
-    payload = GetAssetWithErrorsResponseSerializer(asset).data
-    webhook_post(asset.failure_webhook_endpoint, payload)
-    # Print to stdout
-    error_msg = f"Asset Validation Failed: id:{asset.id}  notify:{asset.start_webhook_endpoint} payload:{payload}"
-    print(error_msg)
-
-    return error_msg
 
 
 def run_pipeline(asset_id):
@@ -60,6 +63,7 @@ def run_pipeline(asset_id):
     # raised, which will halt the pipeline, and report the error.
     pipeline = [
         start_pipeline.s(asset_id),
+        validate_webhook_urls.s(),
         validate_asset_path.s(),
         validate_asset_is_image.s(),
         validate_asset_is_jpeg.s(),
@@ -84,8 +88,9 @@ def trigger_hook(asset_id, hook_name):
         print(
             f"Asset Validation Started: id:{asset.id} notify:{asset.start_webhook_endpoint} payload:{payload}"
         )
+        if validators.url(asset.start_webhook_endpoint):
+            webhook_post(asset.start_webhook_endpoint, payload)
 
-        webhook_post(asset.start_webhook_endpoint, payload)
     elif hook_name == ON_SUCCESS:
         asset.state = COMPLETE
         asset.save()
@@ -96,7 +101,20 @@ def trigger_hook(asset_id, hook_name):
             f"Asset Validation Complete: id:{asset.id} notify:{asset.success_webhook_endpoint} payload:{payload}"
         )
 
-        webhook_post(asset.success_webhook_endpoint, payload)
+        if validators.url(asset.success_webhook_endpoint):
+            webhook_post(asset.success_webhook_endpoint, payload)
+
+    elif hook_name == ON_FAILURE:
+        asset.state = FAILED
+        asset.save()
+
+        payload = GetAssetWithErrorsResponseSerializer(asset).data
+
+        print(
+            f"Asset Validation Failed: id:{asset.id} notify:{asset.failure_webhook_endpoint} payload:{payload}"
+        )
+        if validators.url(asset.failure_webhook_endpoint):
+            webhook_post(asset.failure_webhook_endpoint, payload)
 
 
 @shared_task
@@ -107,8 +125,32 @@ def start_pipeline(asset_id):
 
 @shared_task
 def end_pipeline(asset_id):
-    trigger_hook(asset_id, ON_SUCCESS)
-    return asset_id
+    asset = Asset.objects.get(id=asset_id)
+    if asset.errors:
+        return trigger_hook(asset.id, ON_FAILURE)
+
+    trigger_hook(asset.id, ON_SUCCESS)
+    return asset.id
+
+
+@shared_task(bind=True)
+def validate_webhook_urls(self, asset_id):
+    """Check that the webhook urls are valid."""
+    asset = Asset.objects.get(id=asset_id)
+
+    ERR_MSG = "`{}`is not a valid URL"
+
+    errors = {}
+    if not validators.url(asset.start_webhook_endpoint):
+        errors[ON_START] = [ERR_MSG.format(asset.start_webhook_endpoint)]
+    if not validators.url(asset.success_webhook_endpoint):
+        errors[ON_SUCCESS] = [ERR_MSG.format(asset.success_webhook_endpoint)]
+    if not validators.url(asset.failure_webhook_endpoint):
+        errors[ON_FAILURE] = [ERR_MSG.format(asset.failure_webhook_endpoint)]
+    if errors:
+        record_errors(asset.id, errors, caller="validate_webhook_urls")
+
+    return asset.id
 
 
 @shared_task(bind=True)
@@ -117,9 +159,8 @@ def validate_asset_path(self, asset_id):
     asset = Asset.objects.get(id=asset_id)
 
     if not os.path.exists(asset.path):
-        return report_failure(
-            self, asset.id, "Asset path is not reachable.", error_key=ON_START
-        )
+        error = {ON_START: ["Asset path is not reachable."]}
+        record_errors(asset.id, error, caller="validate_asset_path")
 
     return asset.id
 
@@ -133,9 +174,13 @@ def validate_asset_is_image(self, asset_id):
     try:
         with Image.open(asset.path) as img:
             img.verify()
-            return asset.id
     except UnidentifiedImageError:
-        return report_failure(self, asset.id, "Asset is not an image.")
+        error = {"asset": ["Asset is not an image."]}
+        record_errors(asset.id, error, caller="validate_asset_is_image")
+    except:
+        pass
+
+    return asset.id
 
 
 @shared_task(bind=True)
@@ -146,13 +191,17 @@ def validate_asset_is_jpeg(self, asset_id):
     # NOTE(jake): Though it is common to use the file extension to determine the
     # file type, this can be spoofed or incorrect. Instead we open the file and
     # explicitly check the file signature via Pillow.
-    with Image.open(asset.path) as img:
-        if img.format != "JPEG":
-            return report_failure(
-                self,
-                asset.id,
-                f"Assets must be a JPEG, the provided image is a {img.format}",
-            )
+    try:
+        with Image.open(asset.path) as img:
+            if img.format != "JPEG":
+                error = {
+                    "asset": [
+                        f"Assets must be a JPEG, the provided image is a {img.format}"
+                    ]
+                }
+                record_errors(asset.id, error, caller="validate_asset_is_jpeg")
+    except:
+        pass
 
     return asset.id
 
@@ -163,14 +212,15 @@ def validate_asset_dimensions(self, asset_id):
 
     MAX_DIMENSION = 1000
 
-    # from celery.contrib import rdb
-
-    # rdb.set_trace()
-    with Image.open(asset.path) as img:
-        if img.width > MAX_DIMENSION or img.height > MAX_DIMENSION:
-            return report_failure(
-                self,
-                asset.id,
-                f"Image dimensions must have a width and height smaller than 1000px. The provided image has dimensions of {img.width}x{img.height}px.",
-            )
+    try:
+        with Image.open(asset.path) as img:
+            if img.width > MAX_DIMENSION or img.height > MAX_DIMENSION:
+                error = {
+                    "asset": [
+                        f"Image dimensions must have a width and height smaller than 1000px. The provided image has dimensions of {img.width}x{img.height}px.",
+                    ]
+                }
+                record_errors(asset.id, error, caller="validate_asset_dimensions")
+    except:
+        pass
     return asset.id

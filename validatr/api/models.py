@@ -30,9 +30,9 @@ class Asset(models.Model):
     path = models.TextField(blank=False, null=False)
     provider = models.CharField(max_length=16, choices=FILE_PROVIDERS, default=0)
 
-    start_webhook_endpoint = models.URLField(blank=True, null=True)
-    success_webhook_endpoint = models.URLField(blank=True, null=True)
-    failure_webhook_endpoint = models.URLField(blank=True, null=True)
+    start_webhook_endpoint = models.TextField(blank=True, null=True)
+    success_webhook_endpoint = models.TextField(blank=True, null=True)
+    failure_webhook_endpoint = models.TextField(blank=True, null=True)
 
     state = models.CharField(max_length=16, choices=ASSET_STATES, default="queued")
 

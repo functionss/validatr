@@ -9,6 +9,7 @@ from validatr.pipeline.tasks import (
     validate_asset_is_image,
     validate_asset_is_jpeg,
     validate_asset_dimensions,
+    validate_webhook_urls,
 )
 
 
@@ -29,59 +30,68 @@ class ValidatorsTestCase(TestCase):
         self.png_asset = _create_asset("./assets/png-screenshot.png")
         self.unreachable_asset = _create_asset("./path/to/nowhere.jpg")
 
-    @patch("validatr.pipeline.tasks.webhook_post", autospec=True)
-    def test_validate_asset_path(self, mock_webhook_post):
+    def test_validate_webhook_urls(self):
 
-        resp_available = validate_asset_path(self.jpeg_asset.id)
-        mock_webhook_post.assert_not_called()
-        self.assertEqual(resp_available, self.jpeg_asset.id)
+        asset_with_invalid_hooks = Asset.objects.create(
+            path="./assets/200-ok.jpg",
+            start_webhook_endpoint="wat",
+            success_webhook_endpoint="wat",
+            failure_webhook_endpoint="wat",
+        )
+        resp = validate_webhook_urls(asset_with_invalid_hooks.id)
 
-        resp_unavailable = validate_asset_path(self.unreachable_asset.id)
-        mock_webhook_post.assert_called_once()
-        self.assertIn("not reachable", resp_unavailable)
+        post_validation_asset = Asset.objects.get(id=asset_with_invalid_hooks.id)
 
+        exp_err_msg = "`wat`is not a valid URL"
+        self.assertEqual(post_validation_asset.errors["onStart"], [exp_err_msg])
+        self.assertEqual(post_validation_asset.errors["onSuccess"], [exp_err_msg])
+        self.assertEqual(post_validation_asset.errors["onFailure"], [exp_err_msg])
+
+    def test_validate_asset_path(self):
+        validate_asset_path(self.jpeg_asset.id)
+        jpeg_asset = Asset.objects.get(id=self.jpeg_asset.id)
+        self.assertEqual(jpeg_asset.errors, None)
+
+        validate_asset_path(self.unreachable_asset.id)
+        unreachable_asset = Asset.objects.get(id=self.unreachable_asset.id)
         self.assertEqual(
-            Asset.objects.get(id=self.unreachable_asset.id).state, "failed"
+            unreachable_asset.errors, {"onStart": ["Asset path is not reachable."]}
         )
 
-    @patch("validatr.pipeline.tasks.webhook_post", autospec=True)
-    def test_validate_asset_is_image(self, mock_webhook_post):
-        mock_webhook_post.return_value = True
+    def test_validate_asset_is_image(self):
 
-        resp_image = validate_asset_is_image(self.jpeg_asset.id)
-        self.assertEqual(resp_image, self.jpeg_asset.id)
-        mock_webhook_post.assert_not_called()
+        validate_asset_is_image(self.jpeg_asset.id)
+        jpeg_asset = Asset.objects.get(id=self.jpeg_asset.id)
+        self.assertEqual(jpeg_asset.errors, None)
 
-        resp_text = validate_asset_is_image(self.text_asset.id)
-        mock_webhook_post.assert_called_once()
-        self.assertIn("not an image", resp_text)
+        validate_asset_is_image(self.text_asset.id)
+        unreachable_asset = Asset.objects.get(id=self.text_asset.id)
+        self.assertEqual(
+            unreachable_asset.errors, {"asset": ["Asset is not an image."]}
+        )
 
-        self.assertEqual(Asset.objects.get(id=self.text_asset.id).state, "failed")
+    def test_validate_asset_is_jpeg(self):
 
-    @patch("validatr.pipeline.tasks.webhook_post", autospec=True)
-    def test_validate_asset_is_jpeg(self, mock_webhook_post):
-        mock_webhook_post.return_value = True
+        validate_asset_is_jpeg(self.jpeg_asset.id)
+        jpeg_asset = Asset.objects.get(id=self.jpeg_asset.id)
+        self.assertEqual(jpeg_asset.errors, None)
 
-        resp_image = validate_asset_is_jpeg(self.jpeg_asset.id)
-        self.assertEqual(resp_image, self.jpeg_asset.id)
-        mock_webhook_post.assert_not_called()
+        validate_asset_is_jpeg(self.png_asset.id)
+        unreachable_asset = Asset.objects.get(id=self.png_asset.id)
+        self.assertEqual(
+            unreachable_asset.errors,
+            {"asset": ["Assets must be a JPEG, the provided image is a PNG"]},
+        )
 
-        resp_text = validate_asset_is_jpeg(self.png_asset.id)
-        mock_webhook_post.assert_called_once()
-        self.assertIn("the provided image is a PNG", resp_text)
+    def test_validate_asset_dimensions(self):
 
-        self.assertEqual(Asset.objects.get(id=self.png_asset.id).state, "failed")
+        validate_asset_dimensions(self.jpeg_asset.id)
+        jpeg_asset = Asset.objects.get(id=self.jpeg_asset.id)
+        self.assertEqual(jpeg_asset.errors, None)
 
-    @patch("validatr.pipeline.tasks.webhook_post", autospec=True)
-    def test_validate_asset_dimensions(self, mock_webhook_post):
-        mock_webhook_post.return_value = True
-
-        resp_image = validate_asset_dimensions(self.jpeg_asset.id)
-        self.assertEqual(resp_image, self.jpeg_asset.id)
-        mock_webhook_post.assert_not_called()
-
-        resp_text = validate_asset_dimensions(self.oversized_asset.id)
-        mock_webhook_post.assert_called_once()
-        self.assertIn("must have a width and height smaller than 1000px", resp_text)
-
-        self.assertEqual(Asset.objects.get(id=self.oversized_asset.id).state, "failed")
+        validate_asset_dimensions(self.oversized_asset.id)
+        unreachable_asset = Asset.objects.get(id=self.oversized_asset.id)
+        self.assertIn(
+            "Image dimensions must have a width and height smaller than 1000px.",
+            unreachable_asset.errors["asset"][0],
+        )

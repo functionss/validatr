@@ -12,6 +12,7 @@ djangorestframework = "*"
 pillow = "*"
 validatr = {path = ".", editable = true}
 psycopg2-binary = "*"
+validators = "*"
 
 [dev-packages]
 ipdb = "*"

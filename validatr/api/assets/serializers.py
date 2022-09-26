@@ -5,9 +5,9 @@ from rest_framework import routers, serializers, viewsets
 
 
 class NotificationURLSerializer(serializers.Serializer):
-    onStart = serializers.URLField(required=False)
-    onSuccess = serializers.URLField(required=False)
-    onFailure = serializers.URLField(required=False)
+    onStart = serializers.CharField(required=False)
+    onSuccess = serializers.CharField(required=False)
+    onFailure = serializers.CharField(required=False)
 
 
 class AssetPathSerializer(serializers.Serializer):

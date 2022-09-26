@@ -1,34 +1,89 @@
+from pathlib import Path
+
 import time
 
 from django.test import TestCase
 
 import requests
 
-CREATE_ASSET_URL = "http://localhost:8000/assets/image/"
-FETCH_ASSET_URL = "http://localhost:8000/assets/{id}/"
+
+def is_docker():
+    cgroup = Path("/proc/self/cgroup")
+    return (
+        Path("/.dockerenv").is_file()
+        or cgroup.is_file()
+        and cgroup.read_text().find("docker") > -1
+    )
+
+
+BASE_URL = "http://localhost:8000"
+if is_docker():
+    BASE_URL = "http://app:8000"
+
+CREATE_ASSET_URL = f"{BASE_URL}/assets/image/"
+FETCH_ASSET_URL = BASE_URL + "/assets/{id}/"
 
 
 def _asset_payload(path):
+
     return {
         "assetPath": {
             "location": "local",
             "path": path,
         },
         "notifications": {
-            "onStart": "http://localhost:8000/echo/post/?onStart",
-            "onSuccess": "http://localhost:8000/echo/post/?onSuccess",
-            "onFailure": "http://localhost:8000/echo/post/?onFailure",
+            "onStart": "https://requestbin.io/wtn344wt",
+            "onSuccess": "https://requestbin.io/tvn363tv",
+            "onFailure": "https://requestbin.io/11fq7f41",
         },
     }
 
 
 class ValidatorsTestCase(TestCase):
     def setUp(self):
-        self.text_asset = _asset_payload("./assets/not-an-image.txt")
-        self.jpeg_asset = _asset_payload("./assets/200-ok.jpg")
-        self.oversized_asset = _asset_payload("./assets/yuge.jpg")
-        self.png_asset = _asset_payload("./assets/png-screenshot.png")
-        self.unreachable_asset = _asset_payload("./path/to/nowhere.jpg")
+
+        self.BASE_ASSET_PATH = "./assets"
+        if is_docker():
+            self.BASE_ASSET_PATH = "/app/assets"
+
+        self.text_asset = _asset_payload(f"{self.BASE_ASSET_PATH}/not-an-image.txt")
+        self.jpeg_asset = _asset_payload(f"{self.BASE_ASSET_PATH}/200-ok.jpg")
+        self.oversized_asset = _asset_payload(f"{self.BASE_ASSET_PATH}/yuge.jpg")
+        self.png_asset = _asset_payload(f"{self.BASE_ASSET_PATH}/png-screenshot.png")
+        self.unreachable_asset = _asset_payload(
+            f"{self.BASE_ASSET_PATH}/to/nowhere.jpg"
+        )
+
+    def test_invalid_webhook_urls(self):
+        payload = {
+            "assetPath": {
+                "location": "local",
+                "path": f"{self.BASE_ASSET_PATH}/200-ok.jpg",
+            },
+            "notifications": {
+                "onStart": "wat",
+                "onSuccess": "wat",
+                "onFailure": "wat",
+            },
+        }
+
+        jpeg_asset = requests.post(CREATE_ASSET_URL, json=payload)
+
+        jpeg_asset_id = jpeg_asset.json()["id"]
+
+        self.assertEqual(jpeg_asset.status_code, 202)
+        self.assertEqual("queued", jpeg_asset.json()["state"])
+
+        time.sleep(3)
+
+        jpeg_final = requests.get(FETCH_ASSET_URL.format(id=jpeg_asset_id)).json()
+        jpeg_final_state = jpeg_final["state"]
+
+        exp_err_msg = "`wat`is not a valid URL"
+        self.assertEqual(exp_err_msg, jpeg_final["errors"]["onStart"][0])
+        self.assertEqual(exp_err_msg, jpeg_final["errors"]["onSuccess"][0])
+        self.assertEqual(exp_err_msg, jpeg_final["errors"]["onFailure"][0])
+        self.assertEqual("failed", jpeg_final_state)
 
     def test_valid_jpeg(self):
         jpeg_asset = requests.post(CREATE_ASSET_URL, json=self.jpeg_asset)
